@@ -107,7 +107,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- 가속화 장치 상태: {device} ---")
 
-    model_path = "./best_melon_bbox_model.pth"
+    model_path = ".checkpoints/best_melon_bbox_model.pth"
     if not os.path.exists(model_path):
         print(f"❌ 에러: 가중치 파일이 존재하지 않습니다: {model_path}")
         return
@@ -124,7 +124,7 @@ def main():
     camera = Gemini336Camera()
     camera.set_color_profile(1280, 720, 30)
     camera.set_depth_profile(848, 480, 30, hw_align=False) # 필요 시 카메라 래퍼 규격에 따라 알맞게 하드웨어 정렬 조정
-    camera.set_camera_properties(30, 1, 1)
+    camera.set_camera_properties(120, 0, 1)
     camera.start()
 
     print("--- 멜론 실시간 AI 검출 및 Depth 동시 투영 시작 ('q'를 누르면 종료) ---")

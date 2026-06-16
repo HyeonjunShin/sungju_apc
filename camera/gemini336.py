@@ -1,6 +1,6 @@
 import cv2
 from pyorbbecsdk import OBAlignMode, Pipeline, Config
-from pyorbbecsdk import OBSensorType, OBFormat, OBPropertyID, OBAlignMode
+from pyorbbecsdk import OBSensorType, OBFormat, OBPropertyID, AlignFilter, OBStreamType, OBException
 from .frame import Frame
 
 def check_available_d2c_profile(pipeline, color_profile):
@@ -82,34 +82,70 @@ class Gemini336Camera:
             profile = depth_profiles.get_stream_profile_by_index(i)
             print(f"[{i:02d}] {profile} {profile.get_format()}")
 
-    def set_camera_properties(self, exposure_time: int = 100, gain: int = 2, laser_power: int = 3):
+    def set_camera_properties(self, 
+                              exposure_time: int = 100, 
+                              gain: int = 2, 
+                              laser_power: int = 3,
+                              auto_white_balance: bool = False,
+                              white_balance_temp: int = 4600, # 2800 ~ 6500K 범위
+                              brightness: int = 0,            # -64 ~ 64 범위
+                              contrast: int = 50):            # 0 ~ 100 범위
+        
         device = self.pipeline.get_device()
+        
+        # --- 1. Color (RGB) 노출 및 게인 제어 ---
         device.set_bool_property(OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL, False)
         device.set_int_property(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, exposure_time)
         device.set_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT, gain)
 
-        # device.set_bool_property(OBPropertyID.OB_PROP_DEPTH_ALIGN_HARDWARE_BOOL, True)
-        # device.set_bool_property(OBPropertyID.OB_PROP_HARDWARE_DISTORTION_SWITCH_BOOL, True)
+        # --- 2. Color (RGB) 화이트 밸런스 및 색상 제어 ---
+        try:
+            # 화이트 밸런스 자동/수동 제어
+            device.set_bool_property(OBPropertyID.OB_PROP_COLOR_AUTO_WHITE_BALANCE_BOOL, auto_white_balance)
+            if not auto_white_balance:
+                device.set_int_property(OBPropertyID.OB_PROP_COLOR_WHITE_BALANCE_INT, white_balance_temp)
+            
+            # 기타 화질 관련 제어 (필요 시 주석 해제)
+            # device.set_int_property(OBPropertyID.OB_PROP_COLOR_BRIGHTNESS_INT, brightness)
+            # device.set_int_property(OBPropertyID.OB_PROP_COLOR_CONTRAST_INT, contrast)
+        except OBException as e:
+            print(f"Color 추가 속성 설정 실패 (장치 지원 여부 확인 필요): {e}")
 
-        # device.set_int_property(OBPropertyID.OB_PROP_MIN_DEPTH_INT, min_depth_mm)
-        # device.set_int_property(OBPropertyID.OB_PROP_MAX_DEPTH_INT, max_depth_mm)
+        # --- 3. 플리커 현상 방지 (전원 주파수) ---
+        device.set_int_property(OBPropertyID.OB_PROP_COLOR_POWER_LINE_FREQUENCY_INT, 2) # 0: Disabled, 1: 50Hz, 2: 60Hz, 3: Auto
 
-        # device.set_bool_property(OBPropertyID.OB_PROP_DEPTH_HOLEFILTER_BOOL, True)
+        # --- 4. Depth (깊이) 필터 및 IR 레이저 제어 ---
         device.set_bool_property(OBPropertyID.OB_PROP_DEPTH_NOISE_REMOVAL_FILTER_BOOL, True)
-
         device.set_int_property(OBPropertyID.OB_PROP_LASER_CONTROL_INT, 1) # 강제 ON
         device.set_int_property(OBPropertyID.OB_PROP_LASER_POWER_LEVEL_CONTROL_INT, laser_power)
-        # device.set_int_property(OBPropertyID.OB_PROP_DEVICE_AE_STRATEGY_INT, 1) # 1: Motion (잔상 방지)
-
-        device.set_int_property(OBPropertyID.OB_PROP_COLOR_POWER_LINE_FREQUENCY_INT, 2) # 0: Disabled, 1: 50Hz, 2: 60Hz, 3: Auto
 
     def get_camera_properties(self):
         device = self.pipeline.get_device()
+        
+        # 값 읽어오기
         exposure_time = device.get_int_property(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT)
         gain = device.get_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT)
         laser_power = device.get_int_property(OBPropertyID.OB_PROP_LASER_POWER_LEVEL_CONTROL_INT)
         power_line_frequency = device.get_int_property(OBPropertyID.OB_PROP_COLOR_POWER_LINE_FREQUENCY_INT)
-        print(f"Exposure Time: {exposure_time} µs, Gain: {gain}, Laser Power: {laser_power}, Power Line Frequency: {power_line_frequency}")
+        
+        # Color 추가 속성 읽기 (안전한 예외 처리)
+        auto_wb = "Unknown"
+        wb_temp = "Unknown"
+        try:
+            auto_wb = device.get_bool_property(OBPropertyID.OB_PROP_COLOR_AUTO_WHITE_BALANCE_BOOL)
+            wb_temp = device.get_int_property(OBPropertyID.OB_PROP_COLOR_WHITE_BALANCE_INT)
+        except OBException:
+            pass
+
+        # 출력 출력
+        print("\n=== Current Camera Properties ===")
+        print(f"Exposure Time        : {exposure_time} µs")
+        print(f"Gain                 : {gain}")
+        print(f"Auto White Balance   : {auto_wb}")
+        print(f"White Balance Temp   : {wb_temp} K")
+        print(f"Laser Power Level    : {laser_power}")
+        print(f"Power Line Frequency : {power_line_frequency}")
+        print("=================================\n")
 
     def start(self):
         if self.align_mode == OBAlignMode.HW_MODE:
@@ -168,7 +204,7 @@ def main():
 
     # camera.get_available_devices()
     # camera.get_available_stream_profiles()
-    camera.set_camera_properties(50, 0, 1)
+    camera.set_camera_properties(80, 0, 1)
     camera.get_camera_properties()
     camera.start()
 

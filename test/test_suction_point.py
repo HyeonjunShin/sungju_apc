@@ -125,9 +125,12 @@ class CommModule:
         cv2.namedWindow("view", cv2.WINDOW_NORMAL)
         cv2.setMouseCallback("view", self.on_mouse)
 
-        self.camera = Gemini336Camera(1280, 720, 30, False)
-        self.camera.set_camera_properties(50, 0, 1)
+        self.camera = Gemini336Camera()
+        self.camera.set_color_profile(1280, 720, 30)
+        self.camera.set_depth_profile(848, 480, 30, hw_align=False) # 필요 시 카메라 래퍼 규격에 따라 알맞게 하드웨어 정렬 조정
+        self.camera.set_camera_properties(80, 1, 1)
         self.camera.start()
+
 
         self.tf_flange = None
         self.x = None
