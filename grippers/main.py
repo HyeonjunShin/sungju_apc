@@ -3,7 +3,7 @@ import open3d as o3d
 from open3d.visualization import gui
 
 # 1. STL 파일 로드 및 법선 계산
-mesh = o3d.io.read_triangle_mesh('/home/uon/code/hand-eye_calibration/model/grippers/handEyeG_V1.STL')
+mesh = o3d.io.read_triangle_mesh('./grippers/handEyeG_V1.STL')
 mesh.compute_vertex_normals()
 
 target_point = [0.06146, 0.001, 0.03085]
@@ -14,8 +14,11 @@ tf_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
     size=0.05, 
     origin=target_point
 )
-R = o3d.geometry.get_rotation_matrix_from_axis_angle(np.array([0.0, np.radians(20), 0.0]))
-tf_frame.rotate(R)
+
+R_y = o3d.geometry.get_rotation_matrix_from_axis_angle(np.array([0.0, np.radians(20), 0.0]))
+R_z = o3d.geometry.get_rotation_matrix_from_axis_angle(np.array([0.0, 0.0, np.radians(90)]))
+R = R_y @ R_z
+tf_frame.rotate(R, center=np.array(target_point))
 
 # 2. GUI Application 초기화
 gui.Application.instance.initialize()

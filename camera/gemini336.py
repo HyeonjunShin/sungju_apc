@@ -1,7 +1,7 @@
 import cv2
 from pyorbbecsdk import OBAlignMode, Pipeline, Config
 from pyorbbecsdk import OBSensorType, OBFormat, OBPropertyID, OBAlignMode
-from frame import Frame
+from .frame import Frame
 
 def check_available_d2c_profile(pipeline, color_profile):
     depth_profiles = pipeline.get_d2c_depth_profile_list(color_profile, OBAlignMode.HW_MODE)
@@ -111,17 +111,42 @@ class Gemini336Camera:
 
         return Frame(timestamp, color_data, depth_data, self.width, self.height)
     
+    def get_intrinsic(self):
+        cam_prop = self.pipeline.get_camera_param().rgb_intrinsic
+        fx = cam_prop.fx
+        fy = cam_prop.fy
+        cx = cam_prop.cx
+        cy = cam_prop.cy
+        w = cam_prop.width
+        h = cam_prop.height
+        return fx, fy, cx, cy, w, h
+    
+    def get_distortion(self):
+        cam_prop = self.pipeline.get_camera_param().rgb_distortion
+        k1 = cam_prop.k1
+        k2 = cam_prop.k2
+        k3 = cam_prop.k3
+        k4 = cam_prop.k4
+        k5 = cam_prop.k5
+        k6 = cam_prop.k6
+        p1 = cam_prop.p1
+        p2 = cam_prop.p2
+        return k1, k2, k3, k4, k5, k6, p1, p2
+
     def stop(self):
         self.pipeline.stop()
         print("Stop the Gemini 336 camera.")
 
 def main():
-    camera = Gemini336Camera()
+    camera = Gemini336Camera(1280, 720, 30, False)
     # camera.get_available_devices()
     # camera.get_available_stream_profiles()
-    camera.set_camera_properties(1000, 1, 1)
+    camera.set_camera_properties(50, 0, 1)
     camera.get_camera_properties()
     camera.start()
+
+    print(camera.get_intrinsic())
+    print(camera.get_distortion())
 
     while True:
         frame = camera.get_frames()
