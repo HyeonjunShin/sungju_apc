@@ -7,7 +7,7 @@ import numpy as np
 # 기존 프로젝트의 모델 구조 임포트
 from model import MelonDetectorDense  
 # 카메라 라이브러리
-from camera_wrapper.gemini336 import Gemini336Camera  
+from camera.gemini336 import Gemini336Camera
 from torchvision.ops import nms
 
 
@@ -107,7 +107,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- 가속화 장치 상태: {device} ---")
 
-    model_path = "./checkpoints/best_melon_bbox_model.pth"
+    model_path = "./best_melon_bbox_model.pth"
     if not os.path.exists(model_path):
         print(f"❌ 에러: 가중치 파일이 존재하지 않습니다: {model_path}")
         return
