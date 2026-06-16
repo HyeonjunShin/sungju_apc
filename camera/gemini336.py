@@ -18,8 +18,22 @@ def check_available_d2c_profiles(pipeline, color_profiles):
         # if color_profile.get_height() != 720: continue
         check_available_d2c_profile(pipeline, color_profile)
 
+def find_color_profile(pipeline, width, height, fps):
+    try:
+        color_profiles = pipeline.get_stream_profile_list(OBSensorType.COLOR_SENSOR)
+        color_profile = color_profiles.get_video_stream_profile(width, height, OBFormat.MJPG, fps)
+    except Exception as e:
+        print(f"Color stream profile not found: {e}")
+        return None
+    return color_profile
+
+def find_profile(width, height, fps):
+    pipline = Pipeline()
+    color_profiles = pipline.get_stream_profile_list(OBSensorType.COLOR_SENSOR)
+    color_profile = color_profiles.get_video_stream_profile(1920, 1080, OBFormat.MJPG, 30)
+
 class Gemini336Camera:
-    def __init__(self, width=640, height=480, fps=30, hw_align=True):
+    def __init__(self):
         try:
             self.pipeline = Pipeline()
         except RuntimeError as e:
@@ -27,23 +41,28 @@ class Gemini336Camera:
             exit(1)
         self.config = Config()
 
-        self.width = width
-        self.height = height
-        self.FPS = fps
+    def set_color_profile(self, width, height, fps):
+        self.color_width = width
+        self.color_height = height
+        self.color_fps = fps
 
         color_profiles = self.pipeline.get_stream_profile_list(OBSensorType.COLOR_SENSOR)
-        color_profile = color_profiles.get_video_stream_profile(self.width, self.height, OBFormat.MJPG, self.FPS)
+        color_profile = color_profiles.get_video_stream_profile(self.color_width, self.color_height, OBFormat.MJPG, self.color_fps)
         self.config.enable_stream(color_profile)
         # self.config.enable_video_stream(OBStreamType.COLOR_STREAM, 640, 480, 30, OBFormat.MJPG)
 
+    def set_depth_profile(self, width, height, fps, hw_align=True):
+        self.depth_width = width
+        self.depth_height = height
+        self.depth_fps = fps
 
         depth_profiles = self.pipeline.get_stream_profile_list(OBSensorType.DEPTH_SENSOR)
-        depth_profile = depth_profiles.get_video_stream_profile(self.width, self.height, OBFormat.Y16, self.FPS)
+        depth_profile = depth_profiles.get_video_stream_profile(self.depth_width, self.depth_height, OBFormat.Y16, self.depth_fps)
         self.config.enable_stream(depth_profile)
         # self.config.enable_video_stream(OBStreamType.DEPTH_STREAM, 640, 480, 30, OBFormat.Y16)
 
-        self.pipeline.enable_frame_sync()
-        self.config.set_align_mode(OBAlignMode.HW_MODE if hw_align else OBAlignMode.SW_MODE)
+        self.align_mode = OBAlignMode.HW_MODE if hw_align else OBAlignMode.SW_MODE
+        self.config.set_align_mode(self.align_mode)
 
     def get_available_devices(self):
         for i in range(self.pipeline.get_device().get_sensor_list().get_count()):
@@ -69,7 +88,7 @@ class Gemini336Camera:
         device.set_int_property(OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT, exposure_time)
         device.set_int_property(OBPropertyID.OB_PROP_COLOR_GAIN_INT, gain)
 
-        device.set_bool_property(OBPropertyID.OB_PROP_DEPTH_ALIGN_HARDWARE_BOOL, True)
+        # device.set_bool_property(OBPropertyID.OB_PROP_DEPTH_ALIGN_HARDWARE_BOOL, True)
         # device.set_bool_property(OBPropertyID.OB_PROP_HARDWARE_DISTORTION_SWITCH_BOOL, True)
 
         # device.set_int_property(OBPropertyID.OB_PROP_MIN_DEPTH_INT, min_depth_mm)
@@ -93,23 +112,28 @@ class Gemini336Camera:
         print(f"Exposure Time: {exposure_time} µs, Gain: {gain}, Laser Power: {laser_power}, Power Line Frequency: {power_line_frequency}")
 
     def start(self):
+        if self.align_mode == OBAlignMode.HW_MODE:
+            print("Starting Gemini 336 camera with HW_ALIGN mode...")
+        else:
+            print("Starting Gemini 336 camera with SW_ALIGN mode...")
+            self.align_filter = AlignFilter(OBStreamType.COLOR_STREAM)
+
+        self.pipeline.enable_frame_sync()
         self.pipeline.start(self.config)
 
     def get_frames(self):
         frames = self.pipeline.wait_for_frames(100)
-        if frames is None:
-            return None
-
-        color_frame = frames.get_color_frame()
-        depth_frame = frames.get_depth_frame()
-        if color_frame is None or depth_frame is None:
+        if frames is None or frames.get_color_frame() is None or frames.get_depth_frame() is None:
             return None
         
-        timestamp = color_frame.get_timestamp()
-        color_data = color_frame.get_data()
-        depth_data = depth_frame.get_data()
+        if self.align_mode == OBAlignMode.SW_MODE:
+            frames = self.align_filter.process(frames)
+        
+        timestamp = frames.get_color_frame().get_timestamp()
+        color_data = frames.get_color_frame().get_data()
+        depth_data = frames.get_depth_frame().get_data()
 
-        return Frame(timestamp, color_data, depth_data, self.width, self.height)
+        return Frame(timestamp, color_data, depth_data, self.color_width, self.color_height)
     
     def get_intrinsic(self):
         cam_prop = self.pipeline.get_camera_param().rgb_intrinsic
@@ -138,7 +162,10 @@ class Gemini336Camera:
         print("Stop the Gemini 336 camera.")
 
 def main():
-    camera = Gemini336Camera(1280, 720, 30, False)
+    camera = Gemini336Camera()
+    camera.set_color_profile(1280, 720, 30)
+    camera.set_depth_profile(848, 480, 30, hw_align=False)
+
     # camera.get_available_devices()
     # camera.get_available_stream_profiles()
     camera.set_camera_properties(50, 0, 1)
