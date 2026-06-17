@@ -18,7 +18,7 @@ from camera.camera_worker import camera_worker
 # =====================================================================
 # 1. GLOBAL CALIBRATION & COORDINATE MATRIX
 # =====================================================================
-DEPTH_PATCH_SIZE = 50
+DEPTH_PATCH_SIZE = 40
 DEPTH_HALF_SIZE = DEPTH_PATCH_SIZE // 2
 
 fx = 693.3101806640625
@@ -113,6 +113,10 @@ class OffscreenViewer3D:
         img_np = np.asarray(image_o3d)
         img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         return img_bgr
+
+    def close(self):
+        # OffscreenRenderer 자원 해제용 메서드 안전장치
+        pass
 
 
 # =====================================================================
@@ -295,7 +299,17 @@ def main():
                                 dist_score = (max_work_dist - distance) / (max_work_dist - min_work_dist + 1e-6)
                                 dist_score = np.clip(dist_score, 0.0, 1.0)
 
-                                grabbing_score = (0.4 * score) + (0.3 * angle_similarity) + (0.3 * dist_score)
+                                # 🔥 [추가] 이미지 중앙 가중치 랭킹 계산 알고리즘
+                                img_center_x = orig_w / 2.0
+                                img_center_y = orig_h / 2.0
+                                max_dist_from_center = np.sqrt(img_center_x**2 + img_center_y**2) # 최대 가능 거리를 기준으로 정규화
+                                
+                                pixel_dist_from_center = np.sqrt((cx_pixel - img_center_x)**2 + (cy_pixel - img_center_y)**2)
+                                center_score = 1.0 - (pixel_dist_from_center / max_dist_from_center)
+                                center_score = np.clip(center_score, 0.0, 1.0)
+
+                                # 가중치 비중 수정: AI(30%) + 법선각도(20%) + 작업거리(30%) + 이미지중앙(20%) = 1.0
+                                grabbing_score = (0.3 * score) + (0.2 * angle_similarity) + (0.3 * dist_score) + (0.2 * center_score)
 
                                 candidate_objects.append({
                                     "grabbing_score": grabbing_score,
@@ -334,8 +348,7 @@ def main():
                         cv2.putText(vis_image, text, (xmin, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color_id, 1, cv2.LINE_AA)
                         cv2.putText(vis_image, score_text, (xmin, text_y + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
 
-            # 💡 [핵심 최적화: 조건문 없이 실시간 고속 스트리밍 데이터 전송]
-            # 로봇 연결 상태(global_tf_flange) 및 검출 대상이 상존하면 강제 스트리밍 처리
+            # [핵심 최적화: 조건문 없이 실시간 고속 스트리밍 데이터 전송]
             if global_tf_flange is not None and len(candidate_objects) > 0:
                 send_data_structure = []
                 tf_camera_const = global_tf_flange @ flange2camera

@@ -7,7 +7,7 @@ def camera_worker(color_mem_name, depth_mem_name, color_shape, depth_shape, shut
     
     camera.set_color_profile(1280, 720, 30)
     camera.set_depth_profile(848, 480, 30, hw_align=False) 
-    camera.set_camera_properties()
+    camera.set_camera_properties(70, 0)
     camera.start()
     
     existing_color_shm = shared_memory.SharedMemory(name=color_mem_name)
